@@ -7,6 +7,7 @@ import React, {
   ReactNode,
 } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DEFAULT_USER_FIELDS } from "@/constants/rewards"; // ✅ add this
 
 const STORAGE_KEY = "@earnscape_user";
 
@@ -25,20 +26,20 @@ interface GlobalContextType {
   // session state
   isLogged: boolean;
   user: User | null;
-  loading: boolean;   // still hydrating from storage
-  hydrated: boolean;  // !loading alias for convenience
+  loading: boolean;
+  hydrated: boolean;
 
   // core actions
   refetch: () => Promise<void>;
   login: (userData: User) => Promise<void>;            // persistent
-  loginEphemeral: (userData: User) => Promise<void>;   // DEV: non-persistent
+  loginEphemeral: (userData: User) => Promise<void>;   // non-persistent
   logout: () => Promise<void>;
   clearLocalUser: () => Promise<void>;
 
   // testing utilities
-  testMode: boolean;                     // when true, always behave "logged out"
+  testMode: boolean;
   setTestMode: (v: boolean) => void;
-  bypassNextAutoLogin: () => void;       // ignore saved user on next refetch once
+  bypassNextAutoLogin: () => void;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -75,8 +76,26 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
 
       if (savedUserStr) {
         try {
-          const userData = JSON.parse(savedUserStr) as User;
-          setUser(userData);
+          const raw = JSON.parse(savedUserStr) as Partial<User>;
+
+          // ✅ Merge defaults for any missing/new fields
+          const merged: User = {
+            ...DEFAULT_USER_FIELDS,
+            ...(raw as User),
+          };
+
+          // If we filled any missing fields, write back (simple heuristic)
+          const needsMigration =
+            raw.rewardPoints === undefined ||
+            raw.earnsClaimed === undefined ||
+            raw.walletDeployed === undefined ||
+            raw.starknetAddress === undefined;
+
+          if (needsMigration) {
+            await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          }
+
+          setUser(merged);
           setIsLogged(true);
         } catch (err) {
           console.warn("Invalid user JSON in storage, clearing:", err);
@@ -97,11 +116,15 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Persistent login (used in production)
+  // Persistent login (used in production) — ✅ always merge defaults
   const login = async (userData: User) => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
-      setUser(userData);
+      const merged: User = {
+        ...DEFAULT_USER_FIELDS,
+        ...userData,
+      };
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+      setUser(merged);
       setIsLogged(true);
     } catch (error) {
       console.error("Error during login:", error);
@@ -111,7 +134,11 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
 
   // DEV: do not persist to storage; survives until app restarts
   const loginEphemeral = async (userData: User) => {
-    setUser(userData);
+    const merged: User = {
+      ...DEFAULT_USER_FIELDS,
+      ...userData,
+    };
+    setUser(merged);
     setIsLogged(true);
   };
 
@@ -129,8 +156,8 @@ export const GlobalProvider = ({ children }: { children: ReactNode }) => {
   const clearLocalUser = async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      // swallow
+    } catch {
+      // no-op
     }
   };
 

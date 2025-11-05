@@ -110,11 +110,11 @@ const SignIn = () => {
           <View className="items-center mb-12">
             <View className="w-32 h-32 rounded-full bg-primary/20 items-center justify-center mb-6">
               <View className="w-24 h-24 rounded-full bg-primary/30 items-center justify-center">
-                <Text className="text-5xl font-rubik-bold text-primary">e</Text>
+                <Text className="text-5xl font-rubik-bold text-dark">E</Text>
               </View>
             </View>
 
-            <Text className="text-4xl font-rubik-bold text-text-primary text-center">
+            <Text className="text-4xl font-rubik-bold text-white text-center">
               Welcome to
             </Text>
             <Text className="text-5xl font-rubik-extrabold text-primary text-center mt-2">
@@ -128,7 +128,7 @@ const SignIn = () => {
           {/* Email Sign-In Button */}
           <TouchableOpacity
             onPress={handleEmailLogin}
-            className="w-full rounded-2xl overflow-hidden mb-4"
+            className="bg-primary rounded-2xl py-5 px-6 mb-4"
             activeOpacity={0.8}
           >
             <View className="bg-primary w-full py-5 px-6">
