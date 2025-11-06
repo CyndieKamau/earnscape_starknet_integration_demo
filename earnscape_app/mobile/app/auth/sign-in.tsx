@@ -1,4 +1,5 @@
 // app/(auth)/sign-in.tsx
+
 import React, { useState, useEffect, useRef } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -13,7 +14,11 @@ import {
 import { Redirect, useRouter } from "expo-router";
 import { usePrivy } from "@privy-io/expo";
 import { useLogin } from "@privy-io/expo/ui";
+import axios from "axios";
 import { useGlobalContext } from "@/lib/global-provider";
+import { api, setAuthToken } from "@/lib/api";
+
+
 
 const getUserEmail = (u: unknown) =>
   (u as any)?.email?.address ??
@@ -30,7 +35,7 @@ const SignIn = () => {
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
   // Privy hooks
-  const { user } = usePrivy();
+  const { user, getAccessToken } = usePrivy();
   const { login } = useLogin();
   const { login: saveUserLocally, isLogged, loading } = useGlobalContext();
   
@@ -48,28 +53,45 @@ const SignIn = () => {
   }, [user]);
 
 
-  const handleSuccessfulAuth = async () => {
-    try {
-      const userEmail = getUserEmail(user) || user?.id || "";
-    
-      const userData = {
-        id: user!.id,
-        email: userEmail,
-        privyUserId: user!.id,
-        starknetAddress: "",
-        rewardPoints: 2000,
-        earnsClaimed: 0,
-        walletDeployed: false,
-        createdAt: new Date().toISOString()
-      };
+const handleSuccessfulAuth = async () => {
+  try {
+    // 1) Get the Privy access token
+    const token = await getAccessToken();
+    console.log('Privy token parts:', (token ?? '').split('.').length);
+    if (!token) throw new Error("No Privy access token from Privy");
 
-      await saveUserLocally(userData);
-      router.replace("/(root)/(tabs)");
-    } catch (e) {
-      console.error("Error saving user:", e);
-      Alert.alert("Error", "Failed to complete authentication");
+    setAuthToken(token);
+    try {
+      const me = await api.get('/auth/me', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Backend verification:', me.data);
+    } catch (e: any) {
+      console.log('Axios 401 body:', e?.response?.data);  // <-- see server message
+      throw e;
     }
-  };
+
+    // 4) Build and store your local user
+    const userEmail = getUserEmail(user) || user?.id || "";
+    const userData = {
+      id: user!.id,
+      email: userEmail,
+      privyUserId: user!.id,
+      starknetAddress: "",
+      rewardPoints: 2000,
+      earnsClaimed: 0,
+      walletDeployed: false,
+      createdAt: new Date().toISOString(),
+      accessToken: token, // ✅ keep token for future calls
+    };
+
+    await saveUserLocally(userData);
+    router.replace("/(root)/(tabs)");
+  } catch (e: any) {
+    console.error("Auth flow error:", e?.message || e);
+    Alert.alert("Error", e?.message ?? "Failed to complete authentication");
+  }
+};
 
   // Redirect if already logged in
   if (loading) return null;

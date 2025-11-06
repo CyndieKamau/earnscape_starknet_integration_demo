@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2020",                 // ESM output compatible with Node 18+
+    "moduleResolution": "Bundler",      // resolves .mts/.d.mts from @privy-io/server-auth
+    "rootDir": "src",
+    "outDir": "dist",
+
+    "strict": false,                    
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

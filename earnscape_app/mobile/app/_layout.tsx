@@ -29,16 +29,14 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <PrivyProvider
-      appId={process.env.EXPO_PUBLIC_PRIVY_APP_ID as string}
-      clientId={process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID as string}
-    >
-      {/* Mount Privy’s Elements once at root */}
-      <PrivyElements />
-
-      <GlobalProvider>
-        <Stack screenOptions={{ headerShown: false }} />
-      </GlobalProvider>
-    </PrivyProvider>
-  );
+  <PrivyProvider
+    appId={process.env.EXPO_PUBLIC_PRIVY_APP_ID as string}
+    clientId={process.env.EXPO_PUBLIC_PRIVY_CLIENT_ID as string}
+  >
+    <PrivyElements />
+    <GlobalProvider>
+      <Stack screenOptions={{ headerShown: false }} />
+    </GlobalProvider>
+  </PrivyProvider>
+);
 }
