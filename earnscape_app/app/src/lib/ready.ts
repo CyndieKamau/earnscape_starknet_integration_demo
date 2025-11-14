@@ -4,6 +4,8 @@ import { RawSigner } from "./rawSigner";
 import { provider } from "./starknet";
 import { ENV } from "../config/env";
 import { setupPaymaster, getPaymasterRpc } from "./paymaster";
+import { getUserAuthorizationKey, buildAuthorizationSignature } from './privyAuth';
+import { type WalletApiRequestSignatureInput } from '@privy-io/server-auth';
 
 /**
  * Build Ready v0.5.0 constructor calldata
@@ -35,7 +37,8 @@ export function computeReadyAddress(publicKey: string): string {
 async function rawSign(
   walletId: string,
   messageHash: string,
-  userJwt: string
+  userJwt: string,
+  userId?: string
 ): Promise<string> {
   console.log('🔏 Signing with Privy API...');
   console.log('  Wallet ID:', walletId);
@@ -49,26 +52,52 @@ async function rawSign(
   }
 
   // Privy's wallet API endpoint for raw signing
-  const url = `https://api.privy.io/v1/wallets/${walletId}/rpc`;
+  const url = `https://api.privy.io/v1/wallets/${walletId}/raw_sign`;
   
   const body = {
     method: 'starknet_signMessage',
     params: {
-      message: messageHash,
+      hash: messageHash,
     },
   };
 
-  // Create headers
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'privy-app-id': appId,
-    'Authorization': `Bearer ${userJwt}`,
-    // Basic auth for app credentials
-    'privy-app-secret': appSecret,
-  };
-
   try {
-    const response = await fetch(url, {
+    // Get authorization key
+    const authorizationKey = await getUserAuthorizationKey({
+      userJwt,
+      userId,
+    });
+
+    console.log('🔐 Authorization key length:', authorizationKey.length);
+    console.log('🔐 Authorization key starts with:', authorizationKey.substring(0, 20));
+
+    // Build authorization signature
+    const sigInput: WalletApiRequestSignatureInput = {
+      version: 1,
+      method: 'POST',
+      url,
+      body,
+      headers: {
+        'privy-app-id': appId,
+      },
+    };
+
+    const authSignature = buildAuthorizationSignature({
+      input: sigInput,
+      authorizationKey,
+    });
+
+    console.log('📝 Authorization signature:', authSignature.substring(0, 50) + '...');
+
+  // Create headers
+   const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'privy-app-id': appId,
+      'privy-authorization-signature': authSignature,
+      'Authorization': `Basic ${Buffer.from(`${appId}:${appSecret}`).toString('base64')}`,
+    };
+
+  const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
@@ -122,6 +151,7 @@ export async function buildReadyAccount({
   userJwt,
    usePaymaster = false,
    privyAddress,
+   userId,
 }: {
   walletId: string;
   publicKey: string;
@@ -129,6 +159,7 @@ export async function buildReadyAccount({
   userJwt: string;
   usePaymaster?: boolean;
   privyAddress?: string;
+  userId?: string;
 }): Promise<{ account: Account; address: string }> {
   const constructorCalldata = buildReadyConstructor(publicKey);
   const address = privyAddress || hash.calculateContractAddressFromHash(
@@ -170,7 +201,7 @@ export async function buildReadyAccount({
     address: address,
     signer: new (class extends RawSigner {
       async signRaw(messageHash: string): Promise<[string, string]> {
-        const sig = await rawSign(walletId, messageHash, userJwt);
+        const sig = await rawSign(walletId, messageHash, userJwt, userId);
         
         // Split signature into r and s
         const body = sig.slice(2); // Remove 0x
@@ -430,6 +461,7 @@ export async function executeReadyTransactionWithPaymaster({
   userJwt,
   calls,
   privyAddress,
+  userId,
 }: {
   walletId: string;
   publicKey: string;
@@ -437,6 +469,7 @@ export async function executeReadyTransactionWithPaymaster({
   userJwt: string;
   calls: any | any[];
   privyAddress: string;
+  userId?: string;
 }): Promise<{ transaction_hash: string; address: string }> {
   console.log('📝 Executing Ready transaction with paymaster...');
 
@@ -447,6 +480,7 @@ export async function executeReadyTransactionWithPaymaster({
     userJwt,
     usePaymaster: true, 
     privyAddress,
+    userId,
   });
 
   // Normalize calls to array

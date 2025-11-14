@@ -452,6 +452,22 @@ router.post('/:walletId/withdraw', requirePrivyAuth, async (req: Request, res: R
     console.log('  To:', toAddress);
     console.log('  Amount:', amount, 'EARN');
 
+    console.log('🔍 JWT Debug:');
+    console.log('  Length:', userJwt.length);
+    console.log('  Starts with:', userJwt.substring(0, 50));
+    console.log('  Format check:', userJwt.split('.').length === 3 ? '✅ Valid JWT format' : '❌ Invalid format');
+
+    // Decode the JWT to check expiration
+    try {
+    const payload = JSON.parse(Buffer.from(userJwt.split('.')[1], 'base64').toString());
+    console.log('  Issued at:', new Date(payload.iat * 1000).toISOString());
+    console.log('  Expires at:', new Date(payload.exp * 1000).toISOString());
+    console.log('  Current time:', new Date().toISOString());
+    console.log('  Is expired:', Date.now() / 1000 > payload.exp ? '❌ YES' : '✅ NO');
+    } catch (e) {
+    console.log('  ❌ Failed to decode JWT');
+    }
+
     const classHash = ENV.READY_CLASSHASH;
     if (!classHash) {
       return res.status(500).json({
@@ -509,7 +525,8 @@ router.post('/:walletId/withdraw', requirePrivyAuth, async (req: Request, res: R
       classHash,
       userJwt,
       calls: [transferCall],
-      privyAddress: address, 
+      privyAddress: address,
+      userId: userId, 
     });
 
     console.log('✅ Withdrawal successful (gasless)');

@@ -16,29 +16,18 @@ export async function getUserAuthorizationKey({
   userJwt: string;
   userId?: string;
 }): Promise<string> {
-  const cacheKey = userId || "unknown";
-  const cached = userSignerCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now + 5_000) {
-    return cached.authorizationKey;
-  }
-
- 
-  if (!process.env.PRIVY_WALLET_AUTH_PRIVATE_KEY) {
+  console.log('🔑 Getting authorization key...');
+  console.log('  User JWT length:', userJwt.length);
+  console.log('  User ID:', userId);
+  
+  // ✅ Just return the configured authorization key - no need to generate or cache
+  const authKey = process.env.PRIVY_WALLET_AUTH_PRIVATE_KEY;
+  
+  if (!authKey) {
     throw new Error('PRIVY_WALLET_AUTH_PRIVATE_KEY not configured in .env');
   }
 
-  const privy = getPrivyClient();
-  
- 
-  const res = await privy.walletApi.generateUserSigner({
-    userJwt: userJwt, 
-  });
-
-  const authKey = res.authorizationKey;
-  const expiresAt = new Date(res.expiresAt as unknown as string).getTime();
-  userSignerCache.set(cacheKey, { authorizationKey: authKey, expiresAt });
-  
+  console.log('✅ Using configured authorization key');
   return authKey;
 }
 
@@ -49,11 +38,21 @@ export function buildAuthorizationSignature({
   input: WalletApiRequestSignatureInput;
   authorizationKey: string;
 }): string {
-  const signature = generateAuthorizationSignature({
-    input,
-    authorizationPrivateKey: authorizationKey,
-  });
+  console.log('🔐 Building authorization signature...');
+  console.log('  Input:', JSON.stringify(input, null, 2));
+  console.log('  Auth key length:', authorizationKey.length);
+  
+  try {
+    const signature = generateAuthorizationSignature({
+      input,
+      authorizationPrivateKey: authorizationKey,
+    });
 
-  return signature;
+    console.log('✅ Signature generated:', signature.substring(0, 50) + '...');
+    return signature;
+  } catch (error: any) {
+    console.error('❌ Failed to generate signature:', error);
+    throw error;
+  }
 }
 
