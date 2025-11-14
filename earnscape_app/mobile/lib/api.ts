@@ -11,10 +11,10 @@ const LOCAL_BASE_URL =
     : "http://10.0.2.2:4000";
 
 // 👇 replace with your actual LAN IP if testing on real phone
-const LAN_BASE_URL = "http://192.168.110.89:4000";
+const LAN_BASE_URL = "http://172.19.115.98:4000";
 
 // Toggle this depending on environment
-const BASE_URL = __DEV__ ? LAN_BASE_URL : "http://192.168.110.89:4000";
+const BASE_URL = __DEV__ ? LAN_BASE_URL : "http://172.19.115.98:4000";
 
 // 2️⃣ Create the axios instance
 export const api = axios.create({

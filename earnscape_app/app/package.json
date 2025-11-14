@@ -6,6 +6,8 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@privy-io/node": "^0.5.0",
     "@privy-io/server-auth": "^1.32.5",
     "axios": "^1.13.2",
     "better-sqlite3": "^12.4.1",

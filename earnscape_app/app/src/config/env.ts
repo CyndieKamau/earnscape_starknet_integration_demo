@@ -22,6 +22,7 @@ const EnvSchema = z.object({
   EARNS_TOKEN_SYMBOL: z.string().min(1, 'EARNS_TOKEN_SYMBOL is required'),
   EARNSTARK_MANAGER_ADDRESS: z.string().min(1, 'EARNSTARK_MANAGER_ADDRESS is required'),
   EARNS_TOKEN_OWNER: z.string().min(1, 'EARNS_TOKEN_OWNER is required'),
+  EARNS_TOKEN_OWNER_PRIVATE_KEY: z.string().min(1, 'EARNS_TOKEN_OWNER_PRIVATE_KEY is required'),
 
   // Paymaster (required)
   PAYMASTER_URL: z.url({ message: 'PAYMASTER_URL must be a valid URL' }),

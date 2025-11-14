@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useEffect } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   Animated,
@@ -7,32 +7,172 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useGlobalContext } from "@/lib/global-provider";
+import { api } from "@/lib/api";
 import { CLAIM_COPY, REWARD_CONVERSION, fmt, pointsToEarns } from "@/constants/rewards";
 
+interface WalletDetails {
+  walletId: string;
+  address: string;
+  isDeployed: boolean;
+  balance: {
+    wei: string;
+    formatted: string;
+    symbol: string;
+  };
+}
+
 export default function ClaimScreen() {
-  const { user, login } = useGlobalContext(); // reuse login to persist updated user
+  const { user, login } = useGlobalContext();
+  
+  // UI State
   const [pointsInput, setPointsInput] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [loading, setLoading] = useState(true);
+  
+  // Data State
+  const [walletDetails, setWalletDetails] = useState<WalletDetails | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
+  // Animations
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.9)).current;
   const successScale = useRef(new Animated.Value(0)).current;
 
-  React.useEffect(() => {
+  useEffect(() => {
+    fetchWalletDetails();
+  }, []);
+
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.spring(scale, { toValue: 1, friction: 7, tension: 40, useNativeDriver: true }),
     ]).start();
-  }, [fade, scale]);
+  }, []);
 
+  /**
+   * Fetch wallet details from backend
+   */
+  const fetchWalletDetails = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log("📡 Fetching wallet details...");
+      
+      // Get user's wallets
+      const { data: listResponse } = await api.get("/api/wallet/list");
+      
+      if (!listResponse.success) {
+        throw new Error(listResponse.error || "Failed to fetch wallets");
+      }
+
+      const wallets = listResponse.data?.wallets || [];
+      
+      if (wallets.length === 0) {
+        throw new Error("No wallet found. Please sign in again.");
+      }
+
+      // Use first wallet and fetch details
+      const walletId = wallets[0].id;
+      const { data } = await api.get(`/api/wallet/${walletId}`);
+      
+      if (!data.success) {
+        throw new Error(data.error || "Failed to fetch wallet details");
+      }
+
+      console.log("✅ Wallet loaded:", data.data.address);
+      setWalletDetails(data.data);
+
+    } catch (err: any) {
+      console.error("❌ Failed to fetch wallet:", err);
+      const message = err.response?.data?.error || err.message || "Failed to load wallet";
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Submit claim request
+   */
+  const submitClaim = async () => {
+    if (!valid || !walletDetails?.walletId || !user) return;
+    
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      console.log("🎁 Submitting claim...");
+      console.log("  Wallet ID:", walletDetails.walletId);
+      console.log("  Amount:", earns, "EARN");
+
+      // Call backend claim endpoint
+      const { data } = await api.post(`/api/wallet/${walletDetails.walletId}/claim`, {
+        amount: earns.toString(),
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || "Claim failed");
+      }
+
+      console.log("✅ Claim successful:", data.data.txHash);
+
+      // Update local user state
+      if (user) {
+        const updated = {
+          ...user,
+          rewardPoints: user.rewardPoints - points,
+          earnsClaimed: (user.earnsClaimed || 0) + earns,
+        };
+        await login(updated);
+      }
+      
+      // Refresh wallet balance
+      await fetchWalletDetails();
+
+      // Show success animation
+      setSuccess(true);
+      successScale.setValue(0);
+      Animated.spring(successScale, { 
+        toValue: 1, 
+        useNativeDriver: true, 
+        friction: 6 
+      }).start();
+
+      // Reset input
+      setPointsInput("");
+
+      // Show success alert
+      Alert.alert(
+        "Claim Successful! 🎉",
+        `${fmt(earns)} EARN tokens sent to your wallet!\n\nTx: ${data.data.txHash?.slice(0, 10)}...`,
+        [{ text: "OK" }]
+      );
+
+      // Hide success checkmark after 3 seconds
+      setTimeout(() => setSuccess(false), 3000);
+
+    } catch (err: any) {
+      console.error("❌ Claim error:", err);
+      const message = err.response?.data?.error || err.response?.data?.details || err.message || "Claim failed";
+      setError(message);
+      Alert.alert("Claim Failed", message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Derived state
   const availablePoints = user?.rewardPoints ?? 0;
-  const walletDeployed = user?.walletDeployed ?? false;
-  const starknetAddress = user?.starknetAddress ?? "—";
+  const earnBalance = parseFloat(walletDetails?.balance?.formatted || "0");
+  const starknetAddress = walletDetails?.address || "—";
 
-  // sanitize input
+  // Input sanitization
   const cleanPoints = (raw: string) => {
     const n = parseInt(raw.replace(/[^\d]/g, ""), 10);
     return Number.isFinite(n) ? n : 0;
@@ -41,37 +181,24 @@ export default function ClaimScreen() {
   const points = useMemo(() => cleanPoints(pointsInput), [pointsInput]);
   const earns = useMemo(() => pointsToEarns(points), [points]);
 
+  // Validation
   const hasEnough = points > 0 && points <= availablePoints;
   const meetsMin = points >= REWARD_CONVERSION.MIN_POINTS;
   const valid = hasEnough && meetsMin;
 
   const setMax = () => setPointsInput(String(availablePoints));
 
-  const submit = async () => {
-    if (!valid || !user) return;
-    setSubmitting(true);
-
-    // fake network
-    setTimeout(async () => {
-      // Update local "DB": decrease points, increase cumulative claimed
-      const updated = {
-        ...user,
-        rewardPoints: user.rewardPoints - points,
-        earnsClaimed: (user.earnsClaimed || 0) + earns,
-      };
-
-      await login(updated); // persist over the AsyncStorage key you already use
-      setSubmitting(false);
-      setSuccess(true);
-
-      // tiny checkmark pop
-      successScale.setValue(0);
-      Animated.spring(successScale, { toValue: 1, useNativeDriver: true, friction: 6 }).start();
-
-      // reset input
-      setPointsInput("");
-    }, 900);
-  };
+  // Loading screen
+  if (loading) {
+    return (
+      <SafeAreaView className="bg-dark h-full">
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#10b981" />
+          <Text className="text-white font-rubik mt-4">Loading wallet...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView className="bg-dark h-full">
@@ -87,6 +214,19 @@ export default function ClaimScreen() {
             </Text>
           </View>
 
+          {/* Error Banner */}
+          {error && (
+            <View className="bg-red-500/20 border border-red-500/40 rounded-xl p-4 mb-4 flex-row items-start">
+              <Text className="text-red-400 font-rubik flex-1">{error}</Text>
+              <TouchableOpacity 
+                onPress={() => setError(null)}
+                className="ml-2"
+              >
+                <Text className="text-red-400 text-xl font-bold">×</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Balances */}
           <View className="flex-row gap-3 mb-6">
             <BalanceCard
@@ -95,13 +235,13 @@ export default function ClaimScreen() {
               sub="Available"
             />
             <BalanceCard
-              label="EARNS (claimed)"
-              value={fmt(user?.earnsClaimed ?? 0)}
-              sub="Lifetime"
+              label="EARN Balance"
+              value={fmt(earnBalance)}
+              sub="In Wallet"
             />
           </View>
 
-          {/* Input */}
+          {/* Input Section */}
           <View className="bg-dark-50 rounded-2xl border border-dark-200 p-4 mb-4">
             <Text className="text-sm text-text-secondary font-rubik mb-2">
               Enter points to convert
@@ -116,8 +256,13 @@ export default function ClaimScreen() {
                 onChangeText={setPointsInput}
                 className="flex-1 py-4 text-white font-rubik-semibold text-xl"
                 placeholderTextColor="#808080"
+                editable={!submitting}
               />
-              <TouchableOpacity onPress={setMax} className="bg-primary/20 px-3 py-1.5 rounded-lg">
+              <TouchableOpacity 
+                onPress={setMax} 
+                className="bg-primary/20 px-3 py-1.5 rounded-lg"
+                disabled={submitting || availablePoints === 0}
+              >
                 <Text className="text-primary font-rubik-semibold">MAX</Text>
               </TouchableOpacity>
             </View>
@@ -125,81 +270,102 @@ export default function ClaimScreen() {
             {/* Calculator */}
             <View className="flex-row items-center justify-between mt-3">
               <Text className="text-text-secondary font-rubik">
-                Rate: {REWARD_CONVERSION.POINTS_PER_EARNS} pts = 1 EARNS
+                Rate: {REWARD_CONVERSION.POINTS_PER_EARNS} pts = 1 EARN
               </Text>
               <Text className="text-text-primary font-rubik-semibold">
-                {fmt(earns)} EARNS
+                {fmt(earns)} EARN
               </Text>
             </View>
 
-            {/* Validation */}
+            {/* Validation Messages */}
             {!hasEnough && points > 0 && (
-              <Text className="text-red-400 mt-2 font-rubik">
-                You only have {availablePoints} points.
+              <Text className="text-red-400 mt-2 font-rubik text-sm">
+                ❌ You only have {availablePoints} points
               </Text>
             )}
             {!meetsMin && points > 0 && (
-              <Text className="text-yellow-400 mt-1 font-rubik">
-                Minimum claim is {REWARD_CONVERSION.MIN_POINTS} points.
+              <Text className="text-yellow-400 mt-1 font-rubik text-sm">
+                ⚠️ Minimum claim is {REWARD_CONVERSION.MIN_POINTS} points
               </Text>
             )}
           </View>
 
-          {/* Preview */}
+          {/* Preview Section */}
           <View className="bg-dark-50 rounded-2xl border border-dark-200 p-4 mb-6">
-            <Text className="text-white font-rubik-semibold mb-3">Preview</Text>
+            <Text className="text-white font-rubik-semibold mb-3">Transaction Preview</Text>
 
-            <Row label="You convert" value={`${points || 0} pts`} />
-            <Row label="You receive" value={`${fmt(earns)} EARNS`} />
-            <Row label="Gas" value="0 (covered)" />
-            <Row label="Wallet" value={walletDeployed ? mask(starknetAddress) : "Not deployed"} />
-
-            {!walletDeployed && (
-              <Text className="text-yellow-400 mt-2 font-rubik">
-                Wallet will be deployed on first onchain action.
-              </Text>
-            )}
+            <Row label="You convert" value={`${points || 0} points`} />
+            <Row label="You receive" value={`${fmt(earns)} EARN`} />
+            <Row label="Gas fee" value="0 EARN (sponsored)" />
+            <Row label="To address" value={mask(starknetAddress)} />
           </View>
 
-          {/* Confirm */}
+          {/* Claim Button */}
           <TouchableOpacity
-            onPress={submit}
+            onPress={submitClaim}
             disabled={!valid || submitting}
             className={`rounded-2xl py-4 items-center ${
               !valid || submitting ? "bg-primary/40" : "bg-primary"
             }`}
           >
-            <Text className="text-dark font-rubik-semibold text-base">
-              {submitting ? "Processing..." : "Confirm Claim"}
-            </Text>
+            {submitting ? (
+              <View className="flex-row items-center">
+                <ActivityIndicator size="small" color="#1a1a1a" />
+                <Text className="text-dark font-rubik-semibold text-base ml-2">
+                  Processing...
+                </Text>
+              </View>
+            ) : (
+              <Text className="text-dark font-rubik-semibold text-base">
+                Confirm Claim
+              </Text>
+            )}
           </TouchableOpacity>
 
-          {/* Success */}
+          {/* Success Animation */}
           {success && (
             <Animated.View
-              style={{
-                transform: [{ scale: successScale }],
-              }}
+              style={{ transform: [{ scale: successScale }] }}
               className="mt-6 items-center"
             >
               <View className="w-16 h-16 rounded-full bg-primary/20 items-center justify-center border border-primary/40">
-                <Text className="text-2xl">✅</Text>
+                <Text className="text-3xl">✅</Text>
               </View>
-              <Text className="text-white font-rubik-semibold mt-3">
+              <Text className="text-white font-rubik-semibold mt-3 text-lg">
                 Claim successful!
+              </Text>
+              <Text className="text-text-secondary font-rubik text-sm mt-1">
+                Tokens sent to your wallet
               </Text>
             </Animated.View>
           )}
 
-          {/* Footer note */}
-          <Text className="text-xs text-text-muted text-center mt-8">
-            Claims are mocked until backend is connected.
-          </Text>
+          {/* Refresh Button */}
+          <TouchableOpacity
+            onPress={fetchWalletDetails}
+            disabled={loading}
+            className="mt-4 py-3 items-center"
+          >
+            <Text className="text-primary font-rubik-semibold">
+              {loading ? "Refreshing..." : "🔄 Refresh Balance"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Info Footer */}
+          <View className="mt-6 bg-dark-50/50 rounded-xl p-4">
+            <Text className="text-text-muted font-rubik text-xs text-center">
+              💡 Claims are gasless! Tokens are sent directly to your wallet by the hello-account.
+            </Text>
+          </View>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+// ============================================
+// HELPER COMPONENTS
+// ============================================
 
 function BalanceCard({ label, value, sub }: { label: string; value: string; sub: string }) {
   return (
@@ -213,7 +379,7 @@ function BalanceCard({ label, value, sub }: { label: string; value: string; sub:
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <View className="flex-row items-center justify-between py-2">
+    <View className="flex-row items-center justify-between py-2 border-b border-dark-200">
       <Text className="text-text-secondary font-rubik">{label}</Text>
       <Text className="text-white font-rubik-semibold">{value}</Text>
     </View>
@@ -221,4 +387,4 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const mask = (addr: string) =>
-  addr && addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-6)}` : addr || "—";
+  addr && addr.length > 12 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr || "—";
