@@ -23,16 +23,16 @@ export async function getUserAuthorizationKey({
     return cached.authorizationKey;
   }
 
-  // Make sure PRIVY_WALLET_AUTH_PRIVATE_KEY is set
+ 
   if (!process.env.PRIVY_WALLET_AUTH_PRIVATE_KEY) {
     throw new Error('PRIVY_WALLET_AUTH_PRIVATE_KEY not configured in .env');
   }
 
   const privy = getPrivyClient();
   
-  // This is the correct way according to Privy's SDK
+ 
   const res = await privy.walletApi.generateUserSigner({
-    userJwt: userJwt, // ✅ This is correct for your SDK version
+    userJwt: userJwt, 
   });
 
   const authKey = res.authorizationKey;
@@ -57,76 +57,3 @@ export function buildAuthorizationSignature({
   return signature;
 }
 
-// src/lib/privyAuth.ts
-
-// import { getPrivyClient } from './privy';
-
-// /**
-//  * Generate an authorization key for a user to sign transactions
-//  * 
-//  * @param userJwt - The user's Privy JWT token
-//  * @param userId - Optional user ID for caching (not used by Privy API)
-//  * @returns Authorization key string
-//  */
-// export async function getUserAuthorizationKey({
-//   userJwt,
-//   userId,
-// }: {
-//   userJwt: string;
-//   userId?: string;
-// }): Promise<string> {
-//   if (!userJwt) {
-//     throw new Error('userJwt is required');
-//   }
-
-//   console.log('🔑 Generating authorization key...');
-//   if (userId) {
-//     console.log('  User ID:', userId);
-//   }
-
-//   const privy = getPrivyClient();
-  
-//   try {
-//     // ✅ CRITICAL FIX: Pass JWT string directly, not as object
-//     const response = await privy.walletApi.generateUserSigner(userJwt);
-    
-//     console.log('✅ Authorization key generated');
-//     console.log('  Key length:', response.authorizationKey.length);
-//     console.log('  Expires at:', response.expiresAt);
-    
-//     return response.authorizationKey;
-    
-//   } catch (error: any) {
-//     console.error('❌ Failed to generate authorization key:', error);
-//     console.error('  Error type:', error.error_type);
-//     console.error('  Error message:', error.message);
-    
-//     // Add helpful error context
-//     if (error.error_type === 'invalid_data') {
-//       throw new Error(
-//         'Invalid JWT token. Make sure:\n' +
-//         '1. User has created a Privy wallet\n' +
-//         '2. JWT token is valid and not expired\n' +
-//         '3. User has at least one embedded wallet'
-//       );
-//     }
-    
-//     throw error;
-//   }
-// }
-
-// /**
-//  * Generate authorization key with caching (optional enhancement)
-//  * You can use this later if you want to cache keys
-//  */
-// export async function getUserAuthorizationKeyWithCache({
-//   userJwt,
-//   userId,
-// }: {
-//   userJwt: string;
-//   userId: string;
-// }): Promise<string> {
-//   // For now, just call the main function
-//   // You can add caching logic here later
-//   return getUserAuthorizationKey({ userJwt, userId });
-// }

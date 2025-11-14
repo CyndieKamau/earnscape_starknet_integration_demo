@@ -17,10 +17,10 @@ export function getPrivyClient(): PrivyClient {
       throw new Error('PRIVY_APP_ID and PRIVY_APP_SECRET must be set');
     }
 
-    // ✅ Step 1: Initialize client WITHOUT wallet config
+    // Initialize client 
     privyClient = new PrivyClient(appId, appSecret);
 
-    // ✅ Step 2: Update authorization key AFTER initialization (working pattern from demo)
+    //Update authorization key after initialization 
     if (walletAuthKey) {
       try {
         privyClient.walletApi.updateAuthorizationKey(walletAuthKey);

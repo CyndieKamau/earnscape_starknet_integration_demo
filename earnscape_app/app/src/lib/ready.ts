@@ -143,10 +143,27 @@ export async function buildReadyAccount({
   console.log('  Public Key:', publicKey);
 
   if (privyAddress) {
-    console.log('  ✅ Using Privy address (not calculated)');
+    console.log('  ✅ Using Privy address (should match calculated now!)');
+    
+    // Verify they match
+    const calculated = hash.calculateContractAddressFromHash(
+      publicKey,
+      classHash,
+      buildReadyConstructor(publicKey),
+      0
+    );
+    if (calculated === privyAddress) {
+      console.log('  ✅ VERIFIED: Calculated address matches Privy address!');
+    } else {
+      console.log('  ⚠️  WARNING: Calculated address differs from Privy address');
+      console.log('     Calculated:', calculated);
+      console.log('     Privy:', privyAddress);
+    }
   } else {
-    console.log('  ⚠️  Calculated address (fallback - should not happen!)');
+    console.log('  ⚠️  Calculated address (fallback)');
   }
+
+  
 
   const accountOptions: any = {
     provider: provider,
@@ -272,6 +289,17 @@ export async function deployReadyAccountWithPaymaster({
   const constructorCalldata = buildReadyConstructor(publicKey);
   const contractAddress = privyAddress;
   console.log('  Using Privy Address:', contractAddress);
+
+  // Verify the constructor produces the right address
+  const calculatedAddress = hash.calculateContractAddressFromHash(
+    publicKey,
+    classHash,
+    constructorCalldata,
+    0
+  );
+  
+  console.log('  Calculated Address:', calculatedAddress);
+  console.log('  Addresses match:', calculatedAddress === privyAddress ? '✅' : '❌');
 
 
   // Build account with the paymaster flag
