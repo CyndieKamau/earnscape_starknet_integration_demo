@@ -20,7 +20,6 @@ export async function getUserAuthorizationKey({
   console.log('  User JWT length:', userJwt.length);
   console.log('  User ID:', userId);
   
-  // ✅ Just return the configured authorization key - no need to generate or cache
   const authKey = process.env.PRIVY_WALLET_AUTH_PRIVATE_KEY;
   
   if (!authKey) {

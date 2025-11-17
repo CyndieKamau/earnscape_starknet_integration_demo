@@ -386,10 +386,10 @@ router.post('/:walletId/claim', requirePrivyAuth, async (req: Request, res: Resp
     // Get wallet address
     const { publicKey, address } = await getStarknetWallet(walletId);
 
-    // TODO: Add your business logic here
+    // TODO: 
     // - Verify user has enough points
     // - Deduct from available balance
-    // - Record in database
+    // - Record in db
 
     // Send EARN tokens (hello-account signs, paymaster pays gas)
     const result = await sendEarnsToUserFormatted(address, amount);
@@ -517,7 +517,6 @@ router.post('/:walletId/withdraw', requirePrivyAuth, async (req: Request, res: R
     };
 
     // Execute with paymaster (user signs)
-    const origin = (req.headers?.origin as string) || ENV.CLIENT_URL;
     
     const result = await executeReadyTransactionWithPaymaster({
       walletId,
@@ -525,8 +524,6 @@ router.post('/:walletId/withdraw', requirePrivyAuth, async (req: Request, res: R
       classHash,
       userJwt,
       calls: [transferCall],
-      privyAddress: address,
-      userId: userId, 
     });
 
     console.log('✅ Withdrawal successful (gasless)');
@@ -633,7 +630,7 @@ router.post('/:walletId/execute', requirePrivyAuth, async (req: Request, res: Re
       classHash,
       userJwt,
       calls: execCalls,
-      privyAddress: address, 
+    // privyAddress: address, 
     });
 
     console.log('✅ Transaction executed:', result.transaction_hash);

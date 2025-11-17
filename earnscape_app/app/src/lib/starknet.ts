@@ -110,7 +110,7 @@ export function calculateUserStarknetAddress(privyUserId: string): string {
       public_key: publicKeyHex,
     });
 
-    // Calculate the contract address
+    // Calculate the contract address (this is just for verification purposes to confirm Privy's address matches what we calculate.)
     const address = hash.calculateContractAddressFromHash(
       publicKeyHex, // salt
       ENV.READY_CLASSHASH,

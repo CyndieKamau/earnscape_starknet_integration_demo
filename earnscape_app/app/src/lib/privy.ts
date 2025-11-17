@@ -23,8 +23,8 @@ export function getPrivyClient(): PrivyClient {
     //Update authorization key after initialization 
     if (walletAuthKey) {
       try {
-        privyClient.walletApi.updateAuthorizationKey(walletAuthKey);
-        console.log('✅ Privy wallet authorization key configured');
+        const config = privyClient.walletApi.updateAuthorizationKey(walletAuthKey);
+        console.log('✅ Privy wallet authorization key configured', config);
       } catch (e: any) {
         console.warn('⚠️ Failed to set Privy wallet authorization key:', e?.message);
       }

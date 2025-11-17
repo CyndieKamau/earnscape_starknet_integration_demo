@@ -30,17 +30,16 @@ export function computeReadyAddress(publicKey: string): string {
   );
 }
 
+
 /**
- * Sign a message hash using Privy's direct API
- * This uses the /raw_sign endpoint without SDK wrapper
+ * Sign a message hash using Privy's RPC API with user JWT
  */
 async function rawSign(
   walletId: string,
   messageHash: string,
-  userJwt: string,
-  userId?: string
+  userJwt: string
 ): Promise<string> {
-  console.log('🔏 Signing with Privy API...');
+  console.log('🔏 Signing with Privy API (JWT auth)...');
   console.log('  Wallet ID:', walletId);
   console.log('  Message hash:', messageHash.substring(0, 20) + '...');
 
@@ -51,61 +50,54 @@ async function rawSign(
     throw new Error('PRIVY_APP_ID and PRIVY_APP_SECRET must be set');
   }
 
-  // Privy's wallet API endpoint for raw signing
-  const url = `https://api.privy.io/v1/wallets/${walletId}/raw_sign`;
   
+  console.log('🔍 JWT Debug:');
+  console.log('  Length:', userJwt.length);
+  console.log('  Starts with:', userJwt.substring(0, 50));
+  console.log('  Format check:', userJwt.split('.').length === 3 ? '✅ Valid JWT format' : '❌ Invalid format');
+  
+  try {
+    const payload = JSON.parse(Buffer.from(userJwt.split('.')[1], 'base64').toString());
+    console.log('  Issued at:', new Date(payload.iat * 1000).toISOString());
+    console.log('  Expires at:', new Date(payload.exp * 1000).toISOString());
+    console.log('  Current time:', new Date().toISOString());
+    console.log('  Is expired:', Date.now() / 1000 > payload.exp ? '❌ YES' : '✅ NO');
+  } catch (e) {
+    console.log('  ⚠️ Failed to decode JWT payload');
+  }
+
+  
+  const url = `https://api.privy.io/v1/wallets/${walletId}/rpc`;
+  
+ 
   const body = {
-    method: 'starknet_signMessage',
+    method: 'starknet_signTypedData',
     params: {
-      hash: messageHash,
+      message: messageHash,
     },
   };
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'privy-app-id': appId,
+    'Authorization': `Bearer ${userJwt}`,
+    'privy-app-secret': appSecret,
+  };
+
+  console.log('📤 Sending request to Privy...');
+
   try {
-    // Get authorization key
-    const authorizationKey = await getUserAuthorizationKey({
-      userJwt,
-      userId,
-    });
-
-    console.log('🔐 Authorization key length:', authorizationKey.length);
-    console.log('🔐 Authorization key starts with:', authorizationKey.substring(0, 20));
-
-    // Build authorization signature
-    const sigInput: WalletApiRequestSignatureInput = {
-      version: 1,
-      method: 'POST',
-      url,
-      body,
-      headers: {
-        'privy-app-id': appId,
-      },
-    };
-
-    const authSignature = buildAuthorizationSignature({
-      input: sigInput,
-      authorizationKey,
-    });
-
-    console.log('📝 Authorization signature:', authSignature.substring(0, 50) + '...');
-
-  // Create headers
-   const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'privy-app-id': appId,
-      'privy-authorization-signature': authSignature,
-      'Authorization': `Basic ${Buffer.from(`${appId}:${appSecret}`).toString('base64')}`,
-    };
-
-  const response = await fetch(url, {
+    const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
     });
 
     const text = await response.text();
+    console.log('📥 Privy response status:', response.status);
+    console.log('📥 Privy response body:', text);
+    
     let data: any;
-
     try {
       data = JSON.parse(text);
     } catch {
@@ -113,26 +105,23 @@ async function rawSign(
     }
 
     if (!response.ok) {
+      console.error('❌ Privy API error:', JSON.stringify(data, null, 2));
       throw new Error(
         data?.error || data?.message || `HTTP ${response.status}: ${text}`
       );
     }
 
-    // Extract signature from response
-    const sig =
-      data?.signature ||
-      data?.result?.signature ||
-      data?.result ||
-      data?.data?.signature;
+    //Extract signature
+    const sig = data?.signature || data?.result;
 
     if (!sig || typeof sig !== 'string') {
-      console.error('Unexpected response structure:', data);
+      console.error('❌ Unexpected response structure:', data);
       throw new Error('No signature returned from Privy');
     }
 
     console.log('✅ Signature received from Privy');
+    console.log('  Signature:', sig.substring(0, 50) + '...');
 
-    // Ensure it has 0x prefix
     return sig.startsWith('0x') ? sig : `0x${sig}`;
 
   } catch (error: any) {
@@ -140,7 +129,6 @@ async function rawSign(
     throw new Error(`Failed to sign with Privy: ${error.message}`);
   }
 }
-
 /**
  * Build a Ready account with Privy-backed signer
  */
@@ -150,19 +138,15 @@ export async function buildReadyAccount({
   classHash,
   userJwt,
    usePaymaster = false,
-   privyAddress,
-   userId,
 }: {
   walletId: string;
   publicKey: string;
   classHash: string;
   userJwt: string;
   usePaymaster?: boolean;
-  privyAddress?: string;
-  userId?: string;
 }): Promise<{ account: Account; address: string }> {
   const constructorCalldata = buildReadyConstructor(publicKey);
-  const address = privyAddress || hash.calculateContractAddressFromHash(
+  const address = hash.calculateContractAddressFromHash(
     publicKey,
     classHash,
     buildReadyConstructor(publicKey),
@@ -172,36 +156,14 @@ export async function buildReadyAccount({
   console.log('🏗️ Building Ready account...');
   console.log('  Address:', address);
   console.log('  Public Key:', publicKey);
-
-  if (privyAddress) {
-    console.log('  ✅ Using Privy address (should match calculated now!)');
-    
-    // Verify they match
-    const calculated = hash.calculateContractAddressFromHash(
-      publicKey,
-      classHash,
-      buildReadyConstructor(publicKey),
-      0
-    );
-    if (calculated === privyAddress) {
-      console.log('  ✅ VERIFIED: Calculated address matches Privy address!');
-    } else {
-      console.log('  ⚠️  WARNING: Calculated address differs from Privy address');
-      console.log('     Calculated:', calculated);
-      console.log('     Privy:', privyAddress);
-    }
-  } else {
-    console.log('  ⚠️  Calculated address (fallback)');
-  }
-
-  
+ 
 
   const accountOptions: any = {
     provider: provider,
     address: address,
     signer: new (class extends RawSigner {
       async signRaw(messageHash: string): Promise<[string, string]> {
-        const sig = await rawSign(walletId, messageHash, userJwt, userId);
+        const sig = await rawSign(walletId, messageHash, userJwt);
         
         // Split signature into r and s
         const body = sig.slice(2); // Remove 0x
@@ -340,7 +302,7 @@ export async function deployReadyAccountWithPaymaster({
     classHash,
     userJwt,
     usePaymaster: true, 
-    privyAddress: contractAddress,
+    // privyAddress: contractAddress,
   });
 
   //Prepare deployment data for paymaster
@@ -460,16 +422,16 @@ export async function executeReadyTransactionWithPaymaster({
   classHash,
   userJwt,
   calls,
-  privyAddress,
-  userId,
+//   privyAddress,
+//   userId,
 }: {
   walletId: string;
   publicKey: string;
   classHash: string;
   userJwt: string;
   calls: any | any[];
-  privyAddress: string;
-  userId?: string;
+//   privyAddress: string;
+//   userId?: string;
 }): Promise<{ transaction_hash: string; address: string }> {
   console.log('📝 Executing Ready transaction with paymaster...');
 
@@ -479,8 +441,8 @@ export async function executeReadyTransactionWithPaymaster({
     classHash,
     userJwt,
     usePaymaster: true, 
-    privyAddress,
-    userId,
+    // privyAddress,
+    // userId,
   });
 
   // Normalize calls to array

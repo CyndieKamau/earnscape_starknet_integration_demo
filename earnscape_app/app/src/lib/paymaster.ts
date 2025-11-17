@@ -178,10 +178,9 @@ export async function paymasterDeployAccount(
       maxFee = (BigInt(suggested.toString()) * 3n + 1n) / 2n;
     }
 
-    // ✅ Execute deployment with paymaster
     console.log('Executing paymaster deployment...');
     const result = await account.executePaymasterTransaction(
-      [], // No initial calls
+      [], 
       paymasterDetails,
       maxFee
     );
@@ -258,7 +257,7 @@ export async function paymasterExecute(
 
 /**
  * Request paymaster sponsorship from AVNU and execute transaction
- * This is the old API-based method - use paymasterExecute() instead
+ * This is the old and depreceated API-based method - use paymasterExecute() instead
  * 
  * @deprecated Use paymasterExecute() instead
  */

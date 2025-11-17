@@ -19,7 +19,7 @@ console.log('  NODE_ENV:', ENV.NODE_ENV);
 const app = express();
 
 // ====================================
-// CRITICAL: Request Logger (FIRST!)
+// Request Logger 
 // ====================================
 // This MUST come before other middleware to see ALL requests
 app.use((req, res, next) => {
@@ -132,7 +132,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 // Start Server
 // ====================================
 const PORT = ENV.PORT || 4000;
-const HOST = '0.0.0.0'; // CRITICAL: Listen on all interfaces for mobile access
+const HOST = '0.0.0.0'; 
 
 app.listen(PORT, HOST, () => {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
